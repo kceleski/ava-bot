@@ -24,20 +24,11 @@ app.post("/ask", async (req: Request, res: Response) => {
     const { message } = req.body;
 
     // 🔹 Create a thread for conversation history
-    const thread = await openai.beta.threads.create({
-      headers: {
-        "OpenAI-Beta": "assistants=v2", //Fix: Required for assistant API
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    });
+    const thread = await openai.beta.threads.create();
 
     // 🔹 Run AVA's Assistant using the Assistant ID + Hardcoded Behavior Instructions
-    const run = await openai.beta.threads.runs.createAndRun(thread.id, {
+    const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: process.env.OPENAI_ASSISTANT_ID!,
-      headers: {
-        "OpenAI-Beta": "assistants=v2",
-      },
       instructions: `
         You are AVA, a warm, witty, and highly knowledgeable AI assistant for Health Pro Assist.
         Your mission is to **help users find senior care** in the most **supportive, simple, and friendly way possible**.
@@ -51,18 +42,7 @@ app.post("/ask", async (req: Request, res: Response) => {
         🔹 **Never sound robotic or generic.** Always be **directly relevant to senior care, assisted living, memory care, financial options, and user concerns.**
 
         🔥 **IMPORTANT:** Never provide general AI assistant responses. ONLY talk about senior care, facilities, payment options, and next steps. You are an expert in senior care ONLY.
-
-        Interaction Flow:
-        1️⃣ **Start with a warm greeting**: "Hi, I’m AVA! Finding senior care can feel overwhelming, but I’m here to help!"
-        2️⃣ **Ask for their role**: Healthcare Professional / Family Member / Looking for Themselves.
-        3️⃣ **Guide them through logical steps**: **Location → Type of Care → Financials → Lifestyle Preferences**.
-        4️⃣ **Provide personalized facility recommendations** (use real-time Google Maps API results).
-        5️⃣ **Offer a downloadable summary & next steps**.
-        6️⃣ **If unsure, offer helpful suggestions without overwhelming the user.**
       `,
-      thread: {
-        messages: [{ role: "user", content: message }],
-      },
     });
 
     // 🔹 Wait for AVA to process and respond
@@ -70,11 +50,7 @@ app.post("/ask", async (req: Request, res: Response) => {
     let attempts = 10; // Try for 20 seconds max (waiting 2s each time)
     while (attempts > 0) {
       await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 sec
-      const messages = await openai.beta.threads.messages.list(thread.id), {
-        headers: {
-          "OpenAI-Beta": "assistants=v2",
-          },
-        });
+      const messages = await openai.beta.threads.messages.list(thread.id);
 
       const assistantMessages = messages.data.filter((msg) => msg.role === "assistant");
       if (assistantMessages.length > 0) {
@@ -86,7 +62,7 @@ app.post("/ask", async (req: Request, res: Response) => {
 
     res.json({ reply: response || "No response from AVA yet. Try again in a moment!" });
   } catch (error) {
-    console.error("OpenAI API error:", error);
+    console.error("🔥 OpenAI API error:", error);
     res.status(500).json({ error: "Error fetching OpenAI response" });
   }
 });
@@ -123,7 +99,7 @@ app.get("/facilities", async (req: Request, res: Response) => {
 
     res.json({ facilities });
   } catch (error) {
-    console.error("Error fetching facilities:", error);
+    console.error("🔥 Error fetching facilities:", error);
     res.status(500).json({ error: "Failed to fetch facility data." });
   }
 });

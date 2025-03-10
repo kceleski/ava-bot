@@ -24,11 +24,20 @@ app.post("/ask", async (req: Request, res: Response) => {
     const { message } = req.body;
 
     // 🔹 Create a thread for conversation history
-    const thread = await openai.beta.threads.create();
+    const thread = await openai.beta.threads.create({
+      headers: {
+        "OpenAI-Beta": "assistants=v2", //Fix: Required for assistant API
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
 
     // 🔹 Run AVA's Assistant using the Assistant ID + Hardcoded Behavior Instructions
     const run = await openai.beta.threads.runs.createAndRun(thread.id, {
       assistant_id: process.env.OPENAI_ASSISTANT_ID!,
+      headers: {
+        "OpenAI-Beta": "assistants=v2",
+      },
       instructions: `
         You are AVA, a warm, witty, and highly knowledgeable AI assistant for Health Pro Assist.
         Your mission is to **help users find senior care** in the most **supportive, simple, and friendly way possible**.
@@ -61,10 +70,15 @@ app.post("/ask", async (req: Request, res: Response) => {
     let attempts = 10; // Try for 20 seconds max (waiting 2s each time)
     while (attempts > 0) {
       await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 sec
-      const messages = await openai.beta.threads.messages.list(thread.id);
+      const messages = await openai.beta.threads.messages.list(thread.id), {
+        headers: {
+          "OpenAI-Beta": "assistants=v2",
+          },
+        });
 
-      if (messages.data.length > 0) {
-        response = messages.data[messages.data.length - 1].content[0].text.value;
+      const assistantMessages = messages.data.filter((msg) => msg.role === "assistant");
+      if (assistantMessages.length > 0) {
+        response = assistantMessages[assistantMessages.length - 1].content[0].text.value;
         break;
       }
       attempts--;

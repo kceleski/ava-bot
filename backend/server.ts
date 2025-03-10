@@ -1,7 +1,8 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { OpenAI } from "openai"; // ✅ Correct import
+import { OpenAI } from "openai";
+import axios from "axios";
 
 dotenv.config(); // Load environment variables
 
@@ -14,50 +15,59 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
+// 🔹 Google Maps API Key
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY!;
+
 // 🔹 API Route for OpenAI Assistant
 app.post("/ask", async (req: Request, res: Response) => {
   try {
     const { message } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: "Message is required." });
+    }
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [{ role: "user", content: message }],
-      temperature: 0.7,
-      max_tokens: 150,
+    const response = await openai.beta.threads.createAndRun({
+      assistant_id: process.env.OPENAI_ASSISTANT_ID!,
+      thread: {
+        messages: [{ role: "user", content: message }],
+      },
     });
 
-    res.json({ reply: response.choices[0].message?.content || "No response from AI." });
+    res.json({ reply: response });
   } catch (error) {
     console.error("OpenAI API error:", error);
     res.status(500).json({ error: "Error fetching OpenAI response" });
   }
 });
 
-// 🔹 Sample Arizona Facility Data
-const sampleFacilities = [
-  {
-    id: 1,
-    name: "Sunrise Senior Living",
-    location: {
-      address: "123 Main St, Phoenix, AZ",
-      city: "Phoenix",
-      state: "AZ",
-      zip: "85001",
-      lat: 33.4484,
-      lng: -112.074,
-    },
-    type: "Assisted Living",
-    contact: {
-      phone: "602-555-1234",
-      email: "info@sunriseseniorliving.com",
-      website: "https://sunriseseniorliving.com",
-    },
-  },
-];
+// 🔹 API Route to Fetch Assisted Living Facilities (Google Places API)
+app.get("/facilities", async (req: Request, res: Response) => {
+  try {
+    const { location } = req.query; // Get user-input location
+    if (!location) {
+      return res.status(400).json({ error: "Location is required." });
+    }
 
-// 🔹 API Route for Facilities
-app.get("/facilities", (req: Request, res: Response) => {
-  res.json({ facilities: sampleFacilities });
+    // Fetch real-time facilities from Google Places API
+    const response = await axios.get(`https://maps.googleapis.com/maps/api/place/textsearch/json`, {
+      params: {
+        query: `assisted living facility in ${location}`,
+        key: GOOGLE_MAPS_API_KEY,
+      },
+    });
+
+    const facilities = response.data.results.map((place: any) => ({
+      name: place.name,
+      address: place.formatted_address,
+      rating: place.rating || "No rating available",
+      googleMapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
+    }));
+
+    res.json({ facilities });
+  } catch (error) {
+    console.error("Error fetching facilities:", error);
+    res.status(500).json({ error: "Failed to fetch facility data." });
+  }
 });
 
 // 🔹 Start the Server

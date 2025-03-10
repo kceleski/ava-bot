@@ -26,12 +26,30 @@ app.post("/ask", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Message is required." });
     }
 
-    const response = await openai.beta.threads.createAndRun({
-      assistant_id: process.env.OPENAI_ASSISTANT_ID!,
-      thread: {
-        messages: [{ role: "user", content: message }],
-      },
-    });
+    const response = await openai.chat.completions.create({
+  model: "gpt-4-turbo",
+  messages: [
+    {
+      role: "system",
+      content: `
+      You are AVA, a warm, witty, and highly knowledgeable AI assistant for Health Pro Assist. 
+      Your goal is to gently guide users through the process of finding senior care. 
+      Speak in a friendly and reassuring way, using humor where appropriate, but never making light of serious concerns.
+
+      🔹 If the user is stressed, acknowledge emotions before asking more questions.
+      🔹 If the user is a healthcare professional, ask focused questions to gather patient details efficiently.
+      🔹 If the user is a family member, take a conversational and supportive approach.
+      🔹 Use multiple-choice responses when possible to make decisions easy.
+      🔹 Keep explanations simple, avoiding medical jargon.
+      🔹 Provide actionable next steps after every interaction.
+      `
+    },
+    { role: "user", content: message },
+  ],
+  temperature: 0.7,
+  max_tokens: 300,
+});
+
 
     res.json({ reply: response });
   } catch (error) {

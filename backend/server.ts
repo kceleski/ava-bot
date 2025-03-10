@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import OpenAI from "openai";
+import { OpenAI } from "openai"; // ✅ Correct import
 
 dotenv.config(); // Load environment variables
 
@@ -15,8 +15,6 @@ const openai = new OpenAI({
 });
 
 // 🔹 API Route for OpenAI Assistant
-import { OpenAI } from "openai";
-
 app.post("/ask", async (req: Request, res: Response) => {
   try {
     const { message } = req.body;
@@ -24,6 +22,8 @@ app.post("/ask", async (req: Request, res: Response) => {
     const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [{ role: "user", content: message }],
+      temperature: 0.7,
+      max_tokens: 150,
     });
 
     res.json({ reply: response.choices[0].message?.content || "No response from AI." });

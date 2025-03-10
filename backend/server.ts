@@ -15,16 +15,18 @@ const openai = new OpenAI({
 });
 
 // 🔹 API Route for OpenAI Assistant
+import { OpenAI } from "openai";
+
 app.post("/ask", async (req: Request, res: Response) => {
   try {
     const { message } = req.body;
 
-    const response = await openai.completions.create({
+    const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [{ role: "user", content: message }],
     });
 
-    res.json({ reply: response.choices[0].message.content });
+    res.json({ reply: response.choices[0].message?.content || "No response from AI." });
   } catch (error) {
     console.error("OpenAI API error:", error);
     res.status(500).json({ error: "Error fetching OpenAI response" });

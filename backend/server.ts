@@ -11,27 +11,49 @@ app.use(cors());
 app.use(express.json());
 
 // =========================
-// 🔹 OpenAI API SETUP
+// OpenAI API SETUP
 // =========================
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-// 🔹 Use OpenAI Assistant ID to Generate AVA’s Response
+// Use OpenAI Assistant ID to Generate AVA’s Response
 app.post("/ask", async (req: Request, res: Response) => {
   try {
     const { message } = req.body;
 
-    // 🔹 Create a thread for conversation history
+    // Create a thread for conversation history
     const thread = await openai.beta.threads.create();
 
-    // 🔹 Run AVA's Assistant using the Assistant ID
+    // Run AVA's Assistant using the Assistant ID + Hardcoded Behavior Instructions
     const run = await openai.beta.threads.runs.createAndRun(thread.id, {
       assistant_id: process.env.OPENAI_ASSISTANT_ID!,
+      instructions: `
+        You are AVA, a warm, witty, and highly knowledgeable AI assistant for Health Pro Assist.
+        Your mission is to **help users find senior care** in the most **supportive, simple, and friendly way possible**.
+
+        **If the user is a healthcare professional**, be efficient and clinically focused.
+        **If the user is a family member or looking for themselves**, offer **emotional reassurance** and break things down step by step.
+        **If the user is overwhelmed**, acknowledge emotions first: *"I know this can feel like a lot, but you're not alone. Let's go one step at a time."*
+        **If the user expresses urgency** (e.g., "ASAP," "urgent"), immediately suggest human escalation: *"I can connect you to a care advisor right now."*
+        **Use multiple-choice responses** when possible to simplify decisions.
+        **Keep responses short, warm, and engaging**. Use **light humor when appropriate**, but only if the user seems comfortable with it.
+        **Never sound robotic or generic.** Always be **directly relevant to senior care, assisted living, memory care, financial options, and user concerns.**
+
+        **IMPORTANT:** Never provide general AI assistant responses. ONLY talk about senior care, facilities, payment options, and next steps. You are an expert in senior care ONLY.
+
+        Interaction Flow:
+        1️⃣ **Start with a warm greeting**: "Hi, I’m AVA! Finding senior care can feel overwhelming, but I’m here to help!"
+        2️⃣ **Ask for their role**: Healthcare Professional / Family Member / Looking for Themselves.
+        3️⃣ **Guide them through logical steps**: **Location → Type of Care → Financials → Lifestyle Preferences**.
+        4️⃣ **Provide personalized facility recommendations** (use real-time Google Maps API results).
+        5️⃣ **Offer a downloadable summary & next steps**.
+        6️⃣ **If unsure, offer helpful suggestions without overwhelming the user.**
+      `,
     });
 
-    // 🔹 Wait for the assistant to process and respond
+    // Wait for AVA to process and respond
     let response;
     let attempts = 10; // Try for 20 seconds max (waiting 2s each time)
     while (attempts > 0) {
@@ -53,12 +75,12 @@ app.post("/ask", async (req: Request, res: Response) => {
 });
 
 // =========================
-// 🔹 GOOGLE MAPS API SETUP
+// GOOGLE MAPS API SETUP
 // =========================
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY!;
 
-// 🔹 Fetch Real-Time Assisted Living Facilities Using Google Places API
+// Fetch Real-Time Assisted Living Facilities Using Google Places API
 app.get("/facilities", async (req: Request, res: Response) => {
   try {
     const { location } = req.query; // Get user-input location
@@ -67,7 +89,7 @@ app.get("/facilities", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Location is required." });
     }
 
-    // 🔹 Fetch real-time facilities from Google Places API
+    // Fetch real-time facilities from Google Places API
     const response = await axios.get(`https://maps.googleapis.com/maps/api/place/textsearch/json`, {
       params: {
         query: `assisted living facility in ${location}`,
@@ -90,8 +112,8 @@ app.get("/facilities", async (req: Request, res: Response) => {
 });
 
 // =========================
-// 🔹 START THE SERVER
+// START THE SERVER
 // =========================
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(` Backend running on port ${PORT}`));

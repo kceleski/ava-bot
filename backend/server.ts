@@ -10,47 +10,72 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// =========================
-// 🔹 OpenAI API SETUP
-// =========================
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-// 🔹 Use OpenAI Assistant ID to Generate AVA’s Response
-app.post("/ask", async (req: Request, res: Response) => {
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY!;
+const userThreads = new Map<string, string>(); // Store thread IDs per user
+
+// =====================================
+// 🔹 STEP 1: Start Chat (User Form Submission)
+// =====================================
+app.post("/start-chat", async (req: Request, res: Response) => {
   try {
-    const { message } = req.body;
+    const { role, location, careType, paymentMethod, concerns, lifestylePreferences } = req.body;
 
-    // 🔹 Create a thread for conversation history
+    // 🔹 Create a new conversation thread
     const thread = await openai.beta.threads.create();
+    const threadId = thread.id;
+    userThreads.set(req.ip, threadId); // Store thread ID for user
 
-    // 🔹 Run AVA's Assistant using the Assistant ID + Hardcoded Behavior Instructions
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: process.env.OPENAI_ASSISTANT_ID!,
-      instructions: `
-        You are AVA, a warm, witty, and highly knowledgeable AI assistant for Health Pro Assist.
-        Your mission is to **help users find senior care** in the most **supportive, simple, and friendly way possible**.
-
-        🔹 **If the user is a healthcare professional**, be efficient and clinically focused.
-        🔹 **If the user is a family member or looking for themselves**, offer **emotional reassurance** and break things down step by step.
-        🔹 **If the user is overwhelmed**, acknowledge emotions first: *"I know this can feel like a lot, but you're not alone. Let's go one step at a time."*
-        🔹 **If the user expresses urgency** (e.g., "ASAP," "urgent"), immediately suggest human escalation: *"I can connect you to a care advisor right now."*
-        🔹 **Use multiple-choice responses** when possible to simplify decisions.
-        🔹 **Keep responses short, warm, and engaging**. Use **light humor when appropriate**, but only if the user seems comfortable with it.
-        🔹 **Never sound robotic or generic.** Always be **directly relevant to senior care, assisted living, memory care, financial options, and user concerns.**
-
-        🔥 **IMPORTANT:** Never provide general AI assistant responses. ONLY talk about senior care, facilities, payment options, and next steps. You are an expert in senior care ONLY.
+    // 🔹 Store user details in conversation
+    await openai.beta.threads.messages.create(threadId, {
+      role: "user",
+      content: `
+        I am a ${role} looking for ${careType} in ${location}.
+        Payment method: ${paymentMethod}.
+        Main concern: ${concerns}.
+        Preferences: ${lifestylePreferences.join(", ")}.
       `,
     });
 
-    // 🔹 Wait for AVA to process and respond
+    res.json({ threadId });
+  } catch (error) {
+    console.error("🔥 Error starting chat:", error);
+    res.status(500).json({ error: "Failed to start conversation." });
+  }
+});
+
+// =====================================
+// 🔹 STEP 2: Send Message to AVA (Chat Continuation)
+// =====================================
+app.post("/ask", async (req: Request, res: Response) => {
+  try {
+    const { message, threadId } = req.body;
+    const storedThreadId = userThreads.get(req.ip) || threadId;
+
+    if (!storedThreadId) {
+      return res.status(400).json({ error: "No active session. Start a conversation first." });
+    }
+
+    // 🔹 Send user message to AVA
+    await openai.beta.threads.messages.create(storedThreadId, {
+      role: "user",
+      content: message,
+    });
+
+    // 🔹 Run Assistant
+    await openai.beta.threads.runs.create(storedThreadId, {
+      assistant_id: process.env.OPENAI_ASSISTANT_ID!,
+    });
+
+    // 🔹 Wait for AVA's response
     let response;
-    let attempts = 10; // Try for 20 seconds max (waiting 2s each time)
+    let attempts = 10;
     while (attempts > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 sec
-      const messages = await openai.beta.threads.messages.list(thread.id);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const messages = await openai.beta.threads.messages.list(storedThreadId);
 
       const assistantMessages = messages.data.filter((msg) => msg.role === "assistant");
       if (assistantMessages.length > 0) {
@@ -60,34 +85,33 @@ app.post("/ask", async (req: Request, res: Response) => {
       attempts--;
     }
 
-    res.json({ reply: response || "No response from AVA yet. Try again in a moment!" });
+    res.json({ reply: response || "AVA is thinking... Try again shortly!" });
   } catch (error) {
-    console.error("🔥 OpenAI API error:", error);
-    res.status(500).json({ error: "Error fetching OpenAI response" });
+    console.error("🔥 Error in conversation:", error);
+    res.status(500).json({ error: "Error processing conversation." });
   }
 });
 
-// =========================
-// 🔹 GOOGLE MAPS API SETUP
-// =========================
-
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY!;
-
-// 🔹 Fetch Real-Time Assisted Living Facilities Using Google Places API
+// =====================================
+// 🔹 STEP 3: Fetch Senior Care Facilities (Google Maps API)
+// =====================================
 app.get("/facilities", async (req: Request, res: Response) => {
   try {
-    const { location } = req.query; // Get user-input location
+    const { location, pet_friendly, social_active, quiet_private, religious } = req.query;
 
     if (!location) {
       return res.status(400).json({ error: "Location is required." });
     }
 
-    // 🔹 Fetch real-time facilities from Google Places API
+    let query = `assisted living facility in ${location}`;
+    if (pet_friendly === "true") query += " pet-friendly";
+    if (social_active === "true") query += " social activities";
+    if (quiet_private === "true") query += " quiet";
+    if (religious) query += ` ${religious}`;
+
+    // 🔹 Fetch real-time facilities from Google Maps API
     const response = await axios.get(`https://maps.googleapis.com/maps/api/place/textsearch/json`, {
-      params: {
-        query: `assisted living facility in ${location}`,
-        key: GOOGLE_MAPS_API_KEY,
-      },
+      params: { query, key: GOOGLE_MAPS_API_KEY },
     });
 
     const facilities = response.data.results.map((place: any) => ({
@@ -104,9 +128,8 @@ app.get("/facilities", async (req: Request, res: Response) => {
   }
 });
 
-// =========================
-// 🔹 START THE SERVER
-// =========================
-
+// =====================================
+// 🔹 STEP 4: Start Express Server
+// =====================================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

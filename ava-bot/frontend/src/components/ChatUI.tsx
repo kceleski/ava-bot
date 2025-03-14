@@ -1,48 +1,65 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import axios from "axios";
 
-const ChatUI = () => {
-  const [messages, setMessages] = useState([
+interface Message {
+  id: number;
+  text: string;
+  sender: "user" | "ava";
+}
+
+const ChatUI: React.FC = () => {
+  const [messages, setMessages] = useState<Message[]>([
     { id: 1, text: "Hello! I'm AVA. How can I assist you today?", sender: "ava" },
   ]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState<string>("");
+  const [threadId, setThreadId] = useState<string | null>(null);
 
+  // 🔹 Start Chat (First Time User)
+  const startChat = async () => {
+    try {
+      const userInfo = {
+        role: "family",
+        location: "New York",
+        careType: "assisted living",
+        paymentMethod: "private pay",
+        concerns: "cost",
+        lifestylePreferences: ["pet-friendly"],
+      };
+
+      const response = await axios.post("http://localhost:5000/start-chat", userInfo);
+      setThreadId(response.data.threadId);
+    } catch (error) {
+      console.error("🔥 Error starting chat:", error);
+    }
+  };
+
+  // 🔹 Send Message to AVA
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { id: messages.length + 1, text: input, sender: "user" };
+    const userMessage: Message = { id: messages.length + 1, text: input, sender: "user" };
     setMessages([...messages, userMessage]);
     setInput("");
 
-    if (input.toLowerCase().includes("assisted living") || input.toLowerCase().includes("facility")) {
-      try {
-        const response = await axios.get("http://localhost:5000/facilities");
-        const facilities = response.data.facilities;
+    if (!threadId) {
+      await startChat();
+    }
 
-        if (facilities.length === 0) {
-          setMessages((prev) => [
-            ...prev,
-            { id: prev.length + 1, text: "I couldn't find any facilities at the moment.", sender: "ava" },
-          ]);
-          return;
-        }
+    try {
+      const response = await axios.post("http://localhost:5000/ask", {
+        message: input,
+        threadId,
+      });
 
-        const facilityList = facilities
-          .map((fac) => `${fac.name} at ${fac.location.address}`)
-          .join("\n");
-
-        setMessages((prev) => [
-          ...prev,
-          { id: prev.length + 1, text: `Here are some options:\n${facilityList}`, sender: "ava" },
-        ]);
-      } catch (error) {
-        setMessages((prev) => [
-          ...prev,
-          { id: prev.length + 1, text: "Oops! There was a problem fetching facility data.", sender: "ava" },
-        ]);
-      }
+      const avaMessage: Message = { id: messages.length + 2, text: response.data.reply, sender: "ava" };
+      setMessages((prev) => [...prev, avaMessage]);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        { id: messages.length + 2, text: "Oops! AVA is having trouble responding.", sender: "ava" },
+      ]);
     }
   };
 

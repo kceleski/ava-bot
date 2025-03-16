@@ -17,23 +17,26 @@ const ChatUI: React.FC = () => {
   const [threadId, setThreadId] = useState<string | null>(null);
 
   // 🔹 Start Chat (First Time User)
-  const startChat = async () => {
-    try {
-      const userInfo = {
-        role: "family",
-        location: "New York",
-        careType: "assisted living",
-        paymentMethod: "private pay",
-        concerns: "cost",
-        lifestylePreferences: ["pet-friendly"],
-      };
+ const startChat = async () => {
+  try {
+    // Prompt user for location instead of hardcoding
+    const userLocation = prompt("What city, state, or zip code are you looking in?") || "United States";
 
-      const response = await axios.post("http://localhost:5000/start-chat", userInfo);
-      setThreadId(response.data.threadId);
-    } catch (error) {
-      console.error("🔥 Error starting chat:", error);
-    }
-  };
+    const userInfo = {
+      role: "family",
+      location: userLocation, // ✅ Now user-defined
+      careType: "assisted living",
+      paymentMethod: "private pay",
+      concerns: "cost",
+      lifestylePreferences: ["pet-friendly"],
+    };
+
+    const response = await axios.post("http://localhost:5000/start-chat", userInfo);
+    setThreadId(response.data.threadId);
+  } catch (error) {
+    console.error("🔥 Error starting chat:", error);
+  }
+};
 
   // 🔹 Send Message to AVA
   const sendMessage = async () => {

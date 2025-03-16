@@ -24,6 +24,9 @@ app.post("/start-chat", async (req: Request, res: Response) => {
   try {
     const { role, location, careType, paymentMethod, concerns, lifestylePreferences } = req.body;
 
+    // ✅ Ensure user provides a location (fallback = "United States")
+    const userLocation = location || "United States";
+
     // 🔹 Create a new conversation thread
     const thread = await openai.beta.threads.create();
     const threadId = thread.id;
@@ -33,10 +36,10 @@ app.post("/start-chat", async (req: Request, res: Response) => {
     await openai.beta.threads.messages.create(threadId, {
       role: "user",
       content: `
-        I am a ${role} looking for ${careType} in ${location}.
+        I am a ${role} looking for ${careType} in ${userLocation}.
         Payment method: ${paymentMethod}.
         Main concern: ${concerns}.
-        Preferences: ${lifestylePreferences.join(", ")}.
+        Preferences: ${lifestylePreferences?.join(", ")}.
       `,
     });
 
@@ -53,7 +56,7 @@ app.post("/start-chat", async (req: Request, res: Response) => {
 app.post("/ask", async (req: Request, res: Response) => {
   try {
     const { message, threadId } = req.body;
-    const storedThreadId = userThreads.get(req.ip) || threadId;
+    let storedThreadId = userThreads.get(req.ip) || threadId;
 
     if (!storedThreadId) {
       return res.status(400).json({ error: "No active session. Start a conversation first." });
@@ -114,14 +117,22 @@ app.get("/facilities", async (req: Request, res: Response) => {
       params: { query, key: GOOGLE_MAPS_API_KEY },
     });
 
-    const facilities = response.data.results.map((place: any) => ({
+    let facilities = response.data.results.map((place: any) => ({
       name: place.name,
       address: place.formatted_address,
       rating: place.rating || "No rating available",
       googleMapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
+      subscribed: false, // Placeholder: This should be updated with database integration
     }));
 
-    res.json({ facilities });
+    // 🔹 Sort Facilities: Subscribed → Distance → User Preferences
+    facilities = facilities.sort((a, b) => {
+      if (a.subscribed && !b.subscribed) return -1;
+      if (!a.subscribed && b.subscribed) return 1;
+      return 0;
+    });
+
+    res.json({ facilities: facilities.slice(0, 3) }); // ✅ Return Top 3 Facilities
   } catch (error) {
     console.error("🔥 Error fetching facilities:", error);
     res.status(500).json({ error: "Failed to fetch facility data." });

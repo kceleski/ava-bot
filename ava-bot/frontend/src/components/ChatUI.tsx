@@ -3,6 +3,13 @@
 import React, { useState } from "react";
 import axios from "axios";
 
+// 🔹 Function for AVA to speak responses aloud
+const speakText = (text: string) => {
+  const speech = new SpeechSynthesisUtterance(text);
+  window.speechSynthesis.speak(speech);
+};
+
+// 🔹 Message Interface
 interface Message {
   id: number;
   text: string;
@@ -17,26 +24,27 @@ const ChatUI: React.FC = () => {
   const [threadId, setThreadId] = useState<string | null>(null);
 
   // 🔹 Start Chat (First Time User)
- const startChat = async () => {
-  try {
-    // Prompt user for location instead of hardcoding
-    const userLocation = prompt("What city, state, or zip code are you looking in?") || "United States";
+  const startChat = async () => {
+    try {
+      // Prompt user for location instead of hardcoding
+      const userLocation = prompt("What city, state, or zip code are you looking in?") || "United States";
 
-    const userInfo = {
-      role: "family",
-      location: userLocation, // ✅ Now user-defined
-      careType: "assisted living",
-      paymentMethod: "private pay",
-      concerns: "cost",
-      lifestylePreferences: ["pet-friendly"],
-    };
+      const userInfo = {
+        role: "family",
+        location: userLocation, // ✅ Now user-defined
+        careType: "assisted living",
+        paymentMethod: "private pay",
+        concerns: "cost",
+        lifestylePreferences: ["pet-friendly"],
+      };
 
-    const response = await axios.post("http://localhost:5000/start-chat", userInfo);
-    setThreadId(response.data.threadId);
-  } catch (error) {
-    console.error("🔥 Error starting chat:", error);
-  }
-};
+      const response = await axios.post("http://localhost:5000/start-chat", userInfo);
+      setThreadId(response.data.threadId);
+      return response.data.threadId; // ✅ Return threadId for use in sendMessage
+    } catch (error) {
+      console.error("🔥 Error starting chat:", error);
+    }
+  };
 
   // 🔹 Send Message to AVA
   const sendMessage = async () => {
@@ -46,18 +54,38 @@ const ChatUI: React.FC = () => {
     setMessages([...messages, userMessage]);
     setInput("");
 
-    if (!threadId) {
-      await startChat();
+    let currentThreadId = threadId;
+
+    // ✅ Ensure `threadId` is set before making API call
+    if (!currentThreadId) {
+      currentThreadId = await startChat(); // Wait for chat to start
+      if (!currentThreadId) {
+        setMessages((prev) => [
+          ...prev,
+          { id: messages.length + 2, text: "Error: Could not start chat. Please try again.", sender: "ava" },
+        ]);
+        return;
+      }
+      setThreadId(currentThreadId);
     }
 
     try {
+      // ✅ Show AVA typing indicator
+      setMessages((prev) => [...prev, { id: messages.length + 2, text: "AVA is typing...", sender: "ava" }]);
+
       const response = await axios.post("http://localhost:5000/ask", {
         message: input,
-        threadId,
+        threadId: currentThreadId,
       });
 
+      // ✅ Replace typing indicator with actual response
       const avaMessage: Message = { id: messages.length + 2, text: response.data.reply, sender: "ava" };
-      setMessages((prev) => [...prev, avaMessage]);
+
+      setMessages((prev) =>
+        prev.filter((msg) => msg.text !== "AVA is typing...").concat(avaMessage)
+      );
+
+      speakText(response.data.reply); // ✅ AVA now reads responses aloud
     } catch (error) {
       setMessages((prev) => [
         ...prev,
